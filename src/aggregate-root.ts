@@ -2,10 +2,12 @@ import { IEvent } from './interfaces/index';
 
 const INTERNAL_EVENTS = Symbol();
 const IS_AUTO_COMMIT_ENABLED = Symbol();
+const VERSION = Symbol();
 
 export abstract class AggregateRoot {
   public [IS_AUTO_COMMIT_ENABLED] = false;
   private readonly [INTERNAL_EVENTS]: IEvent[] = [];
+  private [VERSION]: number = -1;
 
   set autoCommit(value: boolean) {
     this[IS_AUTO_COMMIT_ENABLED] = value;
@@ -15,10 +17,12 @@ export abstract class AggregateRoot {
     return this[IS_AUTO_COMMIT_ENABLED];
   }
 
-  publish(event: IEvent) {}
+  async publish(event: IEvent, expectedVersion?: number | undefined): Promise<void> {}
 
-  commit() {
-    this[INTERNAL_EVENTS].forEach(event => this.publish(event));
+  async commit(): Promise<void> {
+    for (const event of this[INTERNAL_EVENTS]) {
+      await this.publish(event, this[VERSION]++);
+    }
     this[INTERNAL_EVENTS].length = 0;
   }
 
@@ -38,7 +42,7 @@ export abstract class AggregateRoot {
     if (!isFromHistory && !this.autoCommit) {
       this[INTERNAL_EVENTS].push(event);
     }
-    this.autoCommit && this.publish(event);
+    this.autoCommit && this.publish(event, this[VERSION]++);
 
     const handler = this.getEventHandler(event);
     handler && handler.call(this, event);
